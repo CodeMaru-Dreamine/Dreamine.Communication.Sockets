@@ -24,11 +24,12 @@
 
 	<ItemGroup>
 		<None Include="icon.png" Pack="true" PackagePath="\" />
+		<None Include="README.md" Pack="true" PackagePath="\" />
 	</ItemGroup>
 
-						  <ItemGroup>
-    <ProjectReference Include="..\Dreamine.Communication.Abstractions\Dreamine.Communication.Abstractions.csproj" />
-    <ProjectReference Include="..\Dreamine.Communication.Core\Dreamine.Communication.Core.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+	  <ProjectReference Include="..\Communication.Abstractions\Dreamine.Communication.Abstractions.csproj" />
+	  <ProjectReference Include="..\Communication.Core\Dreamine.Communication.Core.csproj" />
+	</ItemGroup>
 
 </Project>
