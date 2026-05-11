@@ -1,0 +1,34 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<PackageId>Dreamine.Communication.Sockets</PackageId>
+		<Version>1.0.0</Version>
+		<Authors>Dreamine Core Team</Authors>
+		<Company>Dreamine</Company>
+		<Description>Socket transport package for Dreamine Communication, including TCP client transport based on the shared message transport abstraction.</Description>
+		<PackageTags>dreamine;communication;sockets;tcp;transport;messaging</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<RepositoryUrl>https://github.com/CodeMaru-Dreamine/Dreamine.Communication.Sockets</RepositoryUrl>
+		<Title>Dreamine.Communication.Sockets</Title>
+		<Copyright>© 2026 Dreamine Core Team. All rights reserved.</Copyright>
+		<PackageProjectUrl>https://github.com/CodeMaru-Dreamine/Dreamine.Communication.FullKit</PackageProjectUrl>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageIcon>icon.png</PackageIcon>
+		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="icon.png" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+						  <ItemGroup>
+    <ProjectReference Include="..\Dreamine.Communication.Abstractions\Dreamine.Communication.Abstractions.csproj" />
+    <ProjectReference Include="..\Dreamine.Communication.Core\Dreamine.Communication.Core.csproj" />
+  </ItemGroup>
+
+</Project>
