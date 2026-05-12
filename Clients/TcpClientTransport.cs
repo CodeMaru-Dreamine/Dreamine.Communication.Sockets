@@ -1,12 +1,9 @@
-﻿using System;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
+﻿using System.Net.Sockets;
 using Dreamine.Communication.Abstractions.Enums;
 using Dreamine.Communication.Abstractions.Interfaces;
 using Dreamine.Communication.Abstractions.Models;
-using Dreamine.Communication.Core.Serialization;
 using Dreamine.Communication.Core.Framing;
+using Dreamine.Communication.Core.Protocols;
 using Dreamine.Communication.Sockets.Options;
 
 namespace Dreamine.Communication.Sockets.Clients;
@@ -17,7 +14,7 @@ namespace Dreamine.Communication.Sockets.Clients;
 public sealed class TcpClientTransport : IMessageTransport
 {
     private readonly TcpClientTransportOptions _options;
-    private readonly IMessageSerializer _serializer;
+    private readonly IMessageProtocolAdapter _protocolAdapter;
     private readonly IMessageFrameCodec _frameCodec;
 
     private TcpClient? _client;
@@ -29,7 +26,10 @@ public sealed class TcpClientTransport : IMessageTransport
     /// </summary>
     /// <param name="options">TCP 클라이언트 설정입니다.</param>
     public TcpClientTransport(TcpClientTransportOptions options)
-        : this(options, new JsonMessageSerializer(), new LengthPrefixedMessageFrameCodec())
+        : this(
+            options,
+            new DreamineEnvelopeProtocolAdapter(),
+            new LengthPrefixedMessageFrameCodec())
     {
     }
 
@@ -37,15 +37,15 @@ public sealed class TcpClientTransport : IMessageTransport
     /// \brief TcpClientTransport 클래스의 새 인스턴스를 초기화합니다.
     /// </summary>
     /// <param name="options">TCP 클라이언트 설정입니다.</param>
-    /// <param name="serializer">메시지 직렬화기입니다.</param>
+    /// <param name="protocolAdapter">메시지 프로토콜 어댑터입니다.</param>
     /// <param name="frameCodec">메시지 프레임 코덱입니다.</param>
     public TcpClientTransport(
         TcpClientTransportOptions options,
-        IMessageSerializer serializer,
+        IMessageProtocolAdapter protocolAdapter,
         IMessageFrameCodec frameCodec)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
-        _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
+        _protocolAdapter = protocolAdapter ?? throw new ArgumentNullException(nameof(protocolAdapter));
         _frameCodec = frameCodec ?? throw new ArgumentNullException(nameof(frameCodec));
 
         ValidateOptions(_options);
@@ -72,7 +72,7 @@ public sealed class TcpClientTransport : IMessageTransport
     /// <param name="cancellationToken">취소 토큰입니다.</param>
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
-        if (State == ConnectionState.Connected || State == ConnectionState.Connecting)
+        if (State is ConnectionState.Connected or ConnectionState.Connecting)
         {
             return;
         }
@@ -105,8 +105,10 @@ public sealed class TcpClientTransport : IMessageTransport
         catch
         {
             State = ConnectionState.Faulted;
+
             _client?.Dispose();
             _client = null;
+
             throw;
         }
     }
@@ -139,6 +141,12 @@ public sealed class TcpClientTransport : IMessageTransport
             catch (OperationCanceledException)
             {
             }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (SocketException)
+            {
+            }
         }
 
         _receiveLoopCts?.Dispose();
@@ -146,6 +154,7 @@ public sealed class TcpClientTransport : IMessageTransport
         _receiveLoopTask = null;
 
         cancellationToken.ThrowIfCancellationRequested();
+
         State = ConnectionState.Disconnected;
     }
 
@@ -166,7 +175,7 @@ public sealed class TcpClientTransport : IMessageTransport
         }
 
         var stream = _client.GetStream();
-        var payload = _serializer.Serialize(message);
+        var payload = _protocolAdapter.Encode(message);
 
         await _frameCodec.WriteFrameAsync(stream, payload, cancellationToken)
             .ConfigureAwait(false);
@@ -202,16 +211,36 @@ public sealed class TcpClientTransport : IMessageTransport
                     break;
                 }
 
-                var message = _serializer.Deserialize(payload);
+                var message = _protocolAdapter.Decode(payload);
                 MessageReceived?.Invoke(this, message);
+            }
+
+            if (!cancellationToken.IsCancellationRequested &&
+                State == ConnectionState.Connected)
+            {
+                State = ConnectionState.Disconnected;
             }
         }
         catch (OperationCanceledException)
         {
         }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (SocketException)
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                State = ConnectionState.Faulted;
+            }
+        }
         catch
         {
-            State = ConnectionState.Faulted;
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                State = ConnectionState.Faulted;
+            }
+
             throw;
         }
     }

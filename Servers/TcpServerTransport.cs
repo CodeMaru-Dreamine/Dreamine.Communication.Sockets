@@ -5,7 +5,7 @@ using Dreamine.Communication.Abstractions.Enums;
 using Dreamine.Communication.Abstractions.Interfaces;
 using Dreamine.Communication.Abstractions.Models;
 using Dreamine.Communication.Core.Framing;
-using Dreamine.Communication.Core.Serialization;
+using Dreamine.Communication.Core.Protocols;
 using Dreamine.Communication.Sockets.Options;
 
 namespace Dreamine.Communication.Sockets.Servers;
@@ -14,13 +14,13 @@ namespace Dreamine.Communication.Sockets.Servers;
 /// \brief TCP 서버 기반 메시지 전송 계층입니다.
 /// </summary>
 /// <remarks>
-/// 이 구현은 1차 TCP Loopback 검증용 서버입니다.
-/// SendAsync 호출 시 현재 연결된 모든 클라이언트에게 메시지를 Broadcast합니다.
+/// 이 구현은 TCP 서버 수신 대기, 클라이언트 Accept, 메시지 수신,
+/// 연결된 클라이언트 대상 Broadcast 송신을 제공합니다.
 /// </remarks>
 public sealed class TcpServerTransport : IMessageTransport
 {
     private readonly TcpServerTransportOptions _options;
-    private readonly IMessageSerializer _serializer;
+    private readonly IMessageProtocolAdapter _protocolAdapter;
     private readonly IMessageFrameCodec _frameCodec;
     private readonly ConcurrentDictionary<Guid, TcpClient> _clients = new();
     private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -34,7 +34,10 @@ public sealed class TcpServerTransport : IMessageTransport
     /// </summary>
     /// <param name="options">TCP 서버 설정입니다.</param>
     public TcpServerTransport(TcpServerTransportOptions options)
-        : this(options, new JsonMessageSerializer(), new LengthPrefixedMessageFrameCodec())
+        : this(
+            options,
+            new DreamineEnvelopeProtocolAdapter(),
+            new LengthPrefixedMessageFrameCodec())
     {
     }
 
@@ -42,15 +45,15 @@ public sealed class TcpServerTransport : IMessageTransport
     /// \brief TcpServerTransport 클래스의 새 인스턴스를 초기화합니다.
     /// </summary>
     /// <param name="options">TCP 서버 설정입니다.</param>
-    /// <param name="serializer">메시지 직렬화기입니다.</param>
+    /// <param name="protocolAdapter">메시지 프로토콜 어댑터입니다.</param>
     /// <param name="frameCodec">메시지 프레임 코덱입니다.</param>
     public TcpServerTransport(
         TcpServerTransportOptions options,
-        IMessageSerializer serializer,
+        IMessageProtocolAdapter protocolAdapter,
         IMessageFrameCodec frameCodec)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
-        _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
+        _protocolAdapter = protocolAdapter ?? throw new ArgumentNullException(nameof(protocolAdapter));
         _frameCodec = frameCodec ?? throw new ArgumentNullException(nameof(frameCodec));
 
         ValidateOptions(_options);
@@ -77,7 +80,7 @@ public sealed class TcpServerTransport : IMessageTransport
     /// <param name="cancellationToken">취소 토큰입니다.</param>
     public Task ConnectAsync(CancellationToken cancellationToken = default)
     {
-        if (State == ConnectionState.Connected || State == ConnectionState.Connecting)
+        if (State is ConnectionState.Connected or ConnectionState.Connecting)
         {
             return Task.CompletedTask;
         }
@@ -105,10 +108,13 @@ public sealed class TcpServerTransport : IMessageTransport
         catch
         {
             State = ConnectionState.Faulted;
+
             _listener?.Stop();
             _listener = null;
+
             _serverCts?.Dispose();
             _serverCts = null;
+
             throw;
         }
     }
@@ -128,7 +134,7 @@ public sealed class TcpServerTransport : IMessageTransport
 
         _serverCts?.Cancel();
 
-        foreach (var pair in _clients)
+        foreach (var pair in _clients.ToArray())
         {
             RemoveClient(pair.Key, pair.Value);
         }
@@ -178,7 +184,7 @@ public sealed class TcpServerTransport : IMessageTransport
             throw new InvalidOperationException("TCP server is not running.");
         }
 
-        var payload = _serializer.Serialize(message);
+        var payload = _protocolAdapter.Encode(message);
 
         await _sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
 
@@ -200,6 +206,7 @@ public sealed class TcpServerTransport : IMessageTransport
                 try
                 {
                     var stream = client.GetStream();
+
                     await _frameCodec.WriteFrameAsync(stream, payload, cancellationToken)
                         .ConfigureAwait(false);
                 }
@@ -261,7 +268,6 @@ public sealed class TcpServerTransport : IMessageTransport
             if (!cancellationToken.IsCancellationRequested)
             {
                 State = ConnectionState.Faulted;
-                throw;
             }
         }
     }
@@ -287,7 +293,7 @@ public sealed class TcpServerTransport : IMessageTransport
                     break;
                 }
 
-                var message = _serializer.Deserialize(payload);
+                var message = _protocolAdapter.Decode(payload);
                 MessageReceived?.Invoke(this, message);
             }
         }
@@ -297,9 +303,12 @@ public sealed class TcpServerTransport : IMessageTransport
         catch (ObjectDisposedException)
         {
         }
+        catch (SocketException)
+        {
+        }
         catch
         {
-            RemoveClient(clientId, client);
+            // 수신 루프 단위 예외는 해당 클라이언트 제거로 처리합니다.
         }
         finally
         {
@@ -329,7 +338,8 @@ public sealed class TcpServerTransport : IMessageTransport
             return IPAddress.Any;
         }
 
-        if (host == "127.0.0.1" || host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+        if (host == "127.0.0.1" ||
+            host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
         {
             return IPAddress.Loopback;
         }
