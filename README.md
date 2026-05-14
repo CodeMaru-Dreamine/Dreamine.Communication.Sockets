@@ -2,13 +2,13 @@
 
 `Dreamine.Communication.Sockets` is part of the Dreamine Communication package family.
 
-This package provides TCP socket transport implementations while keeping socket-specific connection logic isolated from the application layer and from other transport packages.
+This package provides TCP and UDP socket transport implementations while keeping socket-specific connection logic isolated from the application layer and from other transport packages.
 
 [➡️ 한국어 문서 보기](./README_KO.md)
 
 ## Description
 
-TCP socket transport package for Dreamine Communication. It provides `TcpClientTransport` and `TcpServerTransport` implementations that send and receive `MessageEnvelope` instances through a selected protocol adapter and frame codec.
+TCP and UDP socket transport package for Dreamine Communication. It provides `TcpClientTransport`, `TcpServerTransport`, and `UdpTransport` implementations that send and receive `MessageEnvelope` instances through a selected protocol adapter and, for TCP, a frame codec.
 
 ## Package Role
 
@@ -36,9 +36,10 @@ It must not own UI state, application command rules, business routing policies, 
 
 - TCP client transport
 - TCP server transport
+- UDP datagram peer-to-peer transport
 - `MessageEnvelope` based send and receive flow
 - Configurable protocol adapter
-- Configurable frame codec
+- Configurable frame codec (TCP only; UDP is datagram-based)
 - Shared JSON serialization and protocol adapters from `Core`
 - Shared stream framing from `Core`
 - Async receive loop with connection state management
@@ -50,8 +51,10 @@ It must not own UI state, application command rules, business routing policies, 
 |---|---|
 | `TcpClientTransport` | `IMessageTransport` implementation for TCP client connections. |
 | `TcpServerTransport` | `IMessageTransport` implementation for TCP server listener and connected clients. |
+| `UdpTransport` | `IMessageTransport` implementation for UDP datagram peer-to-peer communication. |
 | `TcpClientTransportOptions` | TCP client connection configuration model. |
 | `TcpServerTransportOptions` | TCP server listener configuration model. |
+| `UdpTransportOptions` | UDP local and remote endpoint configuration model. |
 | `SocketCommunicationException` | Socket communication specific exception type. |
 
 ## TcpClientTransport
@@ -378,21 +381,94 @@ net8.0
 - `Dreamine.Communication.FullKit`
 - `Dreamine.Communication.Wpf`
 
-## Documentation Check Notes
+## UDP Transport
 
-The previous README already covered the package role, dependency list, target framework, and broad feature summary. The missing or weakly described areas were:
+`Dreamine.Communication.Sockets` also provides UDP peer-style transport support.
+UDP is datagram based, so it does not use stream frame codecs such as `LengthPrefixedMessageFrameCodec`, `DelimiterMessageFrameCodec`, or `RawAvailableMessageFrameCodec`.
 
-- `TcpServerTransport` existence and server-side behavior
-- `TcpClientTransport` and `TcpServerTransport` constructor defaults
-- `TcpClientTransportOptions` and `TcpServerTransportOptions` field-level explanation
-- protocol adapter and frame codec responsibility split
-- recommended TCP protocol combinations
-- `RawAvailableMessageFrameCodec` usage with TCP communication
-- TCP stream boundary warning
-- connection state, send behavior, and error handling behavior
-- practical usage examples
+Recommended UDP structure:
 
-These items are now included.
+```text
+UDP Datagram -> IMessageProtocolAdapter -> MessageEnvelope
+MessageEnvelope -> IMessageProtocolAdapter -> UDP Datagram
+```
+
+The sample uses two local UDP peers for loopback testing:
+
+```text
+Peer A: 127.0.0.1:16001 -> 127.0.0.1:16002
+Peer B: 127.0.0.1:16002 -> 127.0.0.1:16001
+```
+
+Use `Start Loopback` when testing Dreamine peer-to-peer locally. When testing with an external UDP tool such as Hercules, connect only one peer to avoid local port conflicts.
+
+Example Hercules test mapping:
+
+```text
+Dreamine Peer A Local : 16001
+Dreamine Peer A Remote: 16002
+Hercules Local port   : 16002
+Hercules Target port  : 16001
+```
+
+In this case, press `Connect A` and `Send Peer A` in the Dreamine sample.
+
+### UDP Usage Example
+
+```csharp
+using System.Text;
+using Dreamine.Communication.Abstractions.Models;
+using Dreamine.Communication.Core.Protocols;
+using Dreamine.Communication.Sockets.Options;
+using Dreamine.Communication.Sockets.Udp;
+
+var peerA = new UdpTransport(
+    new UdpTransportOptions
+    {
+        LocalHost = "127.0.0.1",
+        LocalPort = 16001,
+        RemoteHost = "127.0.0.1",
+        RemotePort = 16002,
+        ReuseAddress = true
+    },
+    new PlainTextProtocolAdapter(
+        Encoding.UTF8,
+        "udp.plaintext",
+        "Udp.PlainText"));
+
+peerA.MessageReceived += (_, message) =>
+{
+    var text = Encoding.UTF8.GetString(message.Payload);
+    Console.WriteLine($"Peer A RX: {text}");
+};
+
+await peerA.ConnectAsync();
+
+await peerA.SendAsync(new MessageEnvelope
+{
+    Name = "Udp.PeerA.Send",
+    Route = "udp.plaintext",
+    Payload = Encoding.UTF8.GetBytes("hello"),
+    Headers = new Dictionary<string, string>
+    {
+        ["ContentType"] = "text/plain",
+        ["Protocol"] = "PlainText"
+    }
+});
+```
+
+For local loopback testing, create a second `UdpTransport` (Peer B) with the local and remote ports swapped.
+
+## External Text Encoding
+
+TCP and UDP can communicate with external tools or devices that do not use UTF-8. The sample therefore exposes text encoding selection for external text-oriented modes.
+
+| Encoding | Recommended use |
+|---|---|
+| `UTF-8` | Default for modern systems and Dreamine-to-Dreamine communication. |
+| `CP949` | Legacy Korean Windows tools, Hercules Korean text tests, or old equipment protocols. |
+
+Encoding selection is applied at the protocol adapter boundary. It is not the responsibility of `TcpClientTransport`, `TcpServerTransport`, or `UdpTransport`.
 
 ## License
 

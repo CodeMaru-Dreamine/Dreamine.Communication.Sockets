@@ -2,13 +2,13 @@
 
 `Dreamine.Communication.Sockets`는 Dreamine Communication 계열 패키지의 일부입니다.
 
-이 패키지는 TCP 소켓 기반 전송 구현체를 제공하며, 소켓 연결 관련 책임을 애플리케이션 계층 및 다른 전송 패키지와 분리합니다.
+이 패키지는 TCP 및 UDP 소켓 기반 전송 구현체를 제공하며, 소켓 연결 관련 책임을 애플리케이션 계층 및 다른 전송 패키지와 분리합니다.
 
 [➡️ English Version](./README.md)
 
 ## 설명
 
-Dreamine Communication을 위한 TCP 소켓 전송 패키지입니다. `TcpClientTransport`와 `TcpServerTransport` 구현체를 제공하며, 선택된 프로토콜 어댑터와 프레임 코덱을 통해 `MessageEnvelope`를 송수신합니다.
+Dreamine Communication을 위한 TCP/UDP 소켓 전송 패키지입니다. `TcpClientTransport`, `TcpServerTransport`, `UdpTransport` 구현체를 제공하며, 선택된 프로토콜 어댑터와 (TCP의 경우) 프레임 코덱을 통해 `MessageEnvelope`를 송수신합니다.
 
 ## 패키지 역할
 
@@ -36,9 +36,10 @@ Dreamine.Communication.Sockets
 
 - TCP Client Transport
 - TCP Server Transport
+- UDP Datagram Peer-to-Peer Transport
 - `MessageEnvelope` 기반 송수신 흐름
 - 프로토콜 어댑터 설정 가능
-- 프레임 코덱 설정 가능
+- 프레임 코덱 설정 가능 (TCP 전용. UDP는 Datagram 기반이므로 사용하지 않음)
 - `Core`의 공통 JSON 직렬화 및 프로토콜 어댑터 사용
 - `Core`의 공통 스트림 프레임 처리 사용
 - 연결 상태 관리를 포함한 비동기 수신 루프
@@ -50,8 +51,10 @@ Dreamine.Communication.Sockets
 |---|---|
 | `TcpClientTransport` | TCP Client 연결을 위한 `IMessageTransport` 구현체입니다. |
 | `TcpServerTransport` | TCP Server Listener 및 연결된 Client 처리를 위한 `IMessageTransport` 구현체입니다. |
+| `UdpTransport` | UDP Datagram Peer-to-Peer 통신을 위한 `IMessageTransport` 구현체입니다. |
 | `TcpClientTransportOptions` | TCP Client 연결 설정 모델입니다. |
 | `TcpServerTransportOptions` | TCP Server Listener 설정 모델입니다. |
+| `UdpTransportOptions` | UDP Local/Remote 엔드포인트 설정 모델입니다. |
 | `SocketCommunicationException` | 소켓 통신 전용 예외 타입입니다. |
 
 ## TcpClientTransport
@@ -378,21 +381,94 @@ net8.0
 - `Dreamine.Communication.FullKit`
 - `Dreamine.Communication.Wpf`
 
-## 문서 점검 기록
+## UDP Transport
 
-기존 README는 패키지 역할, 의존성, 대상 프레임워크, 넓은 의미의 기능 요약은 포함하고 있었습니다. 다만 아래 항목의 설명이 누락되었거나 부족했습니다.
+`Dreamine.Communication.Sockets`는 UDP Peer 방식 Transport도 제공합니다.
+UDP는 Datagram 기반이므로 `LengthPrefixedMessageFrameCodec`, `DelimiterMessageFrameCodec`, `RawAvailableMessageFrameCodec` 같은 Stream Frame Codec을 사용하지 않습니다.
 
-- `TcpServerTransport` 존재와 Server 측 동작 설명
-- `TcpClientTransport`와 `TcpServerTransport` 생성자 기본값
-- `TcpClientTransportOptions`와 `TcpServerTransportOptions` 필드별 설명
-- Protocol Adapter와 Frame Codec의 책임 분리
-- TCP Protocol 권장 조합
-- TCP 통신에서 `RawAvailableMessageFrameCodec` 사용 방법
-- TCP Stream 경계 주의사항
-- 연결 상태, 송신 동작, 오류 처리 설명
-- 실제 사용 예시
+권장 UDP 구조는 다음과 같습니다.
 
-위 항목을 현재 문서에 추가했습니다.
+```text
+UDP Datagram -> IMessageProtocolAdapter -> MessageEnvelope
+MessageEnvelope -> IMessageProtocolAdapter -> UDP Datagram
+```
+
+샘플은 로컬 Loopback 테스트를 위해 두 개의 UDP Peer를 사용합니다.
+
+```text
+Peer A: 127.0.0.1:16001 -> 127.0.0.1:16002
+Peer B: 127.0.0.1:16002 -> 127.0.0.1:16001
+```
+
+Dreamine 내부 Peer 간 테스트는 `Start Loopback`을 사용합니다. Hercules 같은 외부 UDP 툴과 테스트할 때는 로컬 포트 충돌을 피하기 위해 Peer 하나만 연결합니다.
+
+Hercules 테스트 예시는 다음과 같습니다.
+
+```text
+Dreamine Peer A Local : 16001
+Dreamine Peer A Remote: 16002
+Hercules Local port   : 16002
+Hercules Target port  : 16001
+```
+
+이 경우 Dreamine 샘플에서는 `Connect A` 후 `Send Peer A`를 누릅니다.
+
+### UDP 사용 예시
+
+```csharp
+using System.Text;
+using Dreamine.Communication.Abstractions.Models;
+using Dreamine.Communication.Core.Protocols;
+using Dreamine.Communication.Sockets.Options;
+using Dreamine.Communication.Sockets.Udp;
+
+var peerA = new UdpTransport(
+    new UdpTransportOptions
+    {
+        LocalHost = "127.0.0.1",
+        LocalPort = 16001,
+        RemoteHost = "127.0.0.1",
+        RemotePort = 16002,
+        ReuseAddress = true
+    },
+    new PlainTextProtocolAdapter(
+        Encoding.UTF8,
+        "udp.plaintext",
+        "Udp.PlainText"));
+
+peerA.MessageReceived += (_, message) =>
+{
+    var text = Encoding.UTF8.GetString(message.Payload);
+    Console.WriteLine($"Peer A RX: {text}");
+};
+
+await peerA.ConnectAsync();
+
+await peerA.SendAsync(new MessageEnvelope
+{
+    Name = "Udp.PeerA.Send",
+    Route = "udp.plaintext",
+    Payload = Encoding.UTF8.GetBytes("hello"),
+    Headers = new Dictionary<string, string>
+    {
+        ["ContentType"] = "text/plain",
+        ["Protocol"] = "PlainText"
+    }
+});
+```
+
+Loopback 로컬 테스트는 LocalPort와 RemotePort를 서로 맞바꾼 두 번째 `UdpTransport`(Peer B)를 함께 생성하여 사용합니다.
+
+## 외부 Text Encoding
+
+TCP와 UDP는 UTF-8을 사용하지 않는 외부 툴 또는 장비와 통신할 수 있습니다. 따라서 샘플에서는 외부 Text 계열 모드에 대해 Encoding 선택 기능을 제공합니다.
+
+| Encoding | 권장 용도 |
+|---|---|
+| `UTF-8` | 현대 시스템 및 Dreamine ↔ Dreamine 통신 기본값 |
+| `CP949` | 레거시 한글 Windows 툴, Hercules 한글 테스트, 오래된 장비 프로토콜 |
+
+Encoding 선택은 Protocol Adapter 경계에서 적용됩니다. `TcpClientTransport`, `TcpServerTransport`, `UdpTransport`의 책임이 아닙니다.
 
 ## 라이선스
 
