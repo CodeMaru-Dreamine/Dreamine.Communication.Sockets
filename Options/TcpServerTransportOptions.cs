@@ -1,4 +1,6 @@
-﻿namespace Dreamine.Communication.Sockets.Options;
+using Dreamine.Communication.Sockets.Enums;
+
+namespace Dreamine.Communication.Sockets.Options;
 
 /// <summary>
 /// \brief TCP 서버 전송 계층 설정입니다.
@@ -30,4 +32,9 @@ public sealed class TcpServerTransportOptions
     /// \brief 송신 버퍼 크기입니다.
     /// </summary>
     public int SendBufferSize { get; set; } = 8192;
+
+    /// <summary>
+    /// \brief 서버 SendAsync 호출 시 사용할 기본 클라이언트 전송 대상 정책입니다.
+    /// </summary>
+    public TcpServerSendTargetMode SendTargetMode { get; set; } = TcpServerSendTargetMode.Broadcast;
 }

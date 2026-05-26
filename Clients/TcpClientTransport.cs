@@ -1,4 +1,5 @@
-﻿using System.Net.Sockets;
+using System.IO;
+using System.Net.Sockets;
 using Dreamine.Communication.Abstractions.Enums;
 using Dreamine.Communication.Abstractions.Interfaces;
 using Dreamine.Communication.Abstractions.Models;
@@ -81,6 +82,8 @@ public sealed class TcpClientTransport : IMessageTransport
 
         try
         {
+            CleanupClient();
+
             _client = new TcpClient
             {
                 ReceiveBufferSize = _options.ReceiveBufferSize,
@@ -105,9 +108,7 @@ public sealed class TcpClientTransport : IMessageTransport
         catch
         {
             State = ConnectionState.Faulted;
-
-            _client?.Dispose();
-            _client = null;
+            CleanupClient();
 
             throw;
         }
@@ -128,9 +129,7 @@ public sealed class TcpClientTransport : IMessageTransport
 
         _receiveLoopCts?.Cancel();
 
-        _client?.Close();
-        _client?.Dispose();
-        _client = null;
+        CleanupClient();
 
         if (_receiveLoopTask is not null)
         {
@@ -145,6 +144,9 @@ public sealed class TcpClientTransport : IMessageTransport
             {
             }
             catch (SocketException)
+            {
+            }
+            catch (IOException)
             {
             }
         }
@@ -174,11 +176,21 @@ public sealed class TcpClientTransport : IMessageTransport
             throw new InvalidOperationException("TCP client is not connected.");
         }
 
-        var stream = _client.GetStream();
-        var payload = _protocolAdapter.Encode(message);
+        try
+        {
+            var stream = _client.GetStream();
+            var payload = _protocolAdapter.Encode(message);
 
-        await _frameCodec.WriteFrameAsync(stream, payload, cancellationToken)
-            .ConfigureAwait(false);
+            await _frameCodec.WriteFrameAsync(stream, payload, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            State = ConnectionState.Faulted;
+            CleanupClient();
+
+            throw;
+        }
     }
 
     /// <summary>
@@ -219,6 +231,7 @@ public sealed class TcpClientTransport : IMessageTransport
                 State == ConnectionState.Connected)
             {
                 State = ConnectionState.Disconnected;
+                CleanupClient();
             }
         }
         catch (OperationCanceledException)
@@ -232,6 +245,15 @@ public sealed class TcpClientTransport : IMessageTransport
             if (!cancellationToken.IsCancellationRequested)
             {
                 State = ConnectionState.Faulted;
+                CleanupClient();
+            }
+        }
+        catch (IOException)
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                State = ConnectionState.Faulted;
+                CleanupClient();
             }
         }
         catch
@@ -239,10 +261,30 @@ public sealed class TcpClientTransport : IMessageTransport
             if (!cancellationToken.IsCancellationRequested)
             {
                 State = ConnectionState.Faulted;
+                CleanupClient();
             }
-
-            throw;
         }
+    }
+
+    private void CleanupClient()
+    {
+        try
+        {
+            _client?.Close();
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            _client?.Dispose();
+        }
+        catch
+        {
+        }
+
+        _client = null;
     }
 
     private static void ValidateOptions(TcpClientTransportOptions options)
