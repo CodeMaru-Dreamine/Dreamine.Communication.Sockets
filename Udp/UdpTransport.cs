@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Sockets;
 using Dreamine.Communication.Abstractions.Enums;
 using Dreamine.Communication.Abstractions.Interfaces;
@@ -9,7 +9,7 @@ using Dreamine.Communication.Sockets.Options;
 namespace Dreamine.Communication.Sockets.Udp;
 
 /// <summary>
-/// \brief UDP 기반 메시지 전송 계층입니다.
+/// UDP 기반 메시지 전송 계층입니다.
 /// </summary>
 /// <remarks>
 /// UDP는 Datagram 기반 통신이므로 별도의 FrameCodec을 사용하지 않습니다.
@@ -24,9 +24,10 @@ public sealed class UdpTransport : IMessageTransport
     private IPEndPoint? _remoteEndPoint;
     private CancellationTokenSource? _receiveLoopCts;
     private Task? _receiveLoopTask;
+    private int _state = (int)ConnectionState.Disconnected;
 
     /// <summary>
-    /// \brief UdpTransport 클래스의 새 인스턴스를 초기화합니다.
+    /// UdpTransport 클래스의 새 인스턴스를 초기화합니다.
     /// </summary>
     /// <param name="options">UDP 설정입니다.</param>
     public UdpTransport(UdpTransportOptions options)
@@ -35,7 +36,7 @@ public sealed class UdpTransport : IMessageTransport
     }
 
     /// <summary>
-    /// \brief UdpTransport 클래스의 새 인스턴스를 초기화합니다.
+    /// UdpTransport 클래스의 새 인스턴스를 초기화합니다.
     /// </summary>
     /// <param name="options">UDP 설정입니다.</param>
     /// <param name="protocolAdapter">메시지 프로토콜 어댑터입니다.</param>
@@ -50,22 +51,22 @@ public sealed class UdpTransport : IMessageTransport
     }
 
     /// <summary>
-    /// \brief 현재 연결 상태를 가져옵니다.
+    /// 현재 연결 상태를 가져옵니다.
     /// </summary>
-    public ConnectionState State { get; private set; } = ConnectionState.Disconnected;
+    public ConnectionState State => (ConnectionState)Volatile.Read(ref _state);
 
     /// <summary>
-    /// \brief 전송 방식 종류를 가져옵니다.
+    /// 전송 방식 종류를 가져옵니다.
     /// </summary>
     public TransportKind Kind => TransportKind.Udp;
 
     /// <summary>
-    /// \brief 메시지를 수신했을 때 발생합니다.
+    /// 메시지를 수신했을 때 발생합니다.
     /// </summary>
     public event EventHandler<MessageEnvelope>? MessageReceived;
 
     /// <summary>
-    /// \brief UDP 소켓을 열고 수신 루프를 시작합니다.
+    /// UDP 소켓을 열고 수신 루프를 시작합니다.
     /// </summary>
     /// <param name="cancellationToken">취소 토큰입니다.</param>
     public Task ConnectAsync(CancellationToken cancellationToken = default)
@@ -77,7 +78,7 @@ public sealed class UdpTransport : IMessageTransport
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        State = ConnectionState.Connecting;
+        SetState(ConnectionState.Connecting);
 
         try
         {
@@ -104,7 +105,7 @@ public sealed class UdpTransport : IMessageTransport
 
             _receiveLoopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-            State = ConnectionState.Connected;
+            SetState(ConnectionState.Connected);
 
             _receiveLoopTask = Task.Run(
                 () => ReceiveLoopAsync(_receiveLoopCts.Token),
@@ -114,7 +115,7 @@ public sealed class UdpTransport : IMessageTransport
         }
         catch
         {
-            State = ConnectionState.Faulted;
+            SetState(ConnectionState.Faulted);
 
             _client?.Dispose();
             _client = null;
@@ -128,7 +129,7 @@ public sealed class UdpTransport : IMessageTransport
     }
 
     /// <summary>
-    /// \brief UDP 소켓을 닫고 수신 루프를 종료합니다.
+    /// UDP 소켓을 닫고 수신 루프를 종료합니다.
     /// </summary>
     /// <param name="cancellationToken">취소 토큰입니다.</param>
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
@@ -138,7 +139,7 @@ public sealed class UdpTransport : IMessageTransport
             return;
         }
 
-        State = ConnectionState.Disconnecting;
+        SetState(ConnectionState.Disconnecting);
 
         _receiveLoopCts?.Cancel();
 
@@ -170,11 +171,11 @@ public sealed class UdpTransport : IMessageTransport
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        State = ConnectionState.Disconnected;
+        SetState(ConnectionState.Disconnected);
     }
 
     /// <summary>
-    /// \brief UDP 원격 엔드포인트로 메시지를 전송합니다.
+    /// UDP 원격 엔드포인트로 메시지를 전송합니다.
     /// </summary>
     /// <param name="message">전송할 메시지입니다.</param>
     /// <param name="cancellationToken">취소 토큰입니다.</param>
@@ -200,7 +201,7 @@ public sealed class UdpTransport : IMessageTransport
     }
 
     /// <summary>
-    /// \brief UDP 전송 계층 리소스를 비동기로 해제합니다.
+    /// UDP 전송 계층 리소스를 비동기로 해제합니다.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
@@ -236,14 +237,14 @@ public sealed class UdpTransport : IMessageTransport
         {
             if (!cancellationToken.IsCancellationRequested)
             {
-                State = ConnectionState.Faulted;
+                SetState(ConnectionState.Faulted);
             }
         }
         catch
         {
             if (!cancellationToken.IsCancellationRequested)
             {
-                State = ConnectionState.Faulted;
+                SetState(ConnectionState.Faulted);
             }
         }
     }
@@ -274,5 +275,10 @@ public sealed class UdpTransport : IMessageTransport
         {
             throw new ArgumentOutOfRangeException(parameterName);
         }
+    }
+
+    private void SetState(ConnectionState state)
+    {
+        Interlocked.Exchange(ref _state, (int)state);
     }
 }

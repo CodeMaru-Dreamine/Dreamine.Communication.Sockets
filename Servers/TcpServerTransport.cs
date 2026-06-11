@@ -13,7 +13,7 @@ using Dreamine.Communication.Sockets.Options;
 namespace Dreamine.Communication.Sockets.Servers;
 
 /// <summary>
-/// \brief TCP 서버 기반 메시지 전송 계층입니다.
+/// TCP 서버 기반 메시지 전송 계층입니다.
 /// </summary>
 /// <remarks>
 /// 이 구현은 TCP 서버 수신 대기, 클라이언트 Accept, 메시지 수신,
@@ -25,14 +25,14 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
     private readonly IMessageProtocolAdapter _protocolAdapter;
     private readonly IMessageFrameCodec _frameCodec;
     private readonly ConcurrentDictionary<Guid, TcpClientConnectionEntry> _clients = new();
-    private readonly SemaphoreSlim _sendLock = new(1, 1);
 
     private TcpListener? _listener;
     private CancellationTokenSource? _serverCts;
     private Task? _acceptLoopTask;
+    private int _state = (int)ConnectionState.Disconnected;
 
     /// <summary>
-    /// \brief TcpServerTransport 클래스의 새 인스턴스를 초기화합니다.
+    /// TcpServerTransport 클래스의 새 인스턴스를 초기화합니다.
     /// </summary>
     /// <param name="options">TCP 서버 설정입니다.</param>
     public TcpServerTransport(TcpServerTransportOptions options)
@@ -44,7 +44,7 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
     }
 
     /// <summary>
-    /// \brief TcpServerTransport 클래스의 새 인스턴스를 초기화합니다.
+    /// TcpServerTransport 클래스의 새 인스턴스를 초기화합니다.
     /// </summary>
     /// <param name="options">TCP 서버 설정입니다.</param>
     /// <param name="protocolAdapter">메시지 프로토콜 어댑터입니다.</param>
@@ -62,22 +62,22 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
     }
 
     /// <summary>
-    /// \brief 현재 연결 상태를 가져옵니다.
+    /// 현재 연결 상태를 가져옵니다.
     /// </summary>
-    public ConnectionState State { get; private set; } = ConnectionState.Disconnected;
+    public ConnectionState State => (ConnectionState)Volatile.Read(ref _state);
 
     /// <summary>
-    /// \brief 전송 방식 종류를 가져옵니다.
+    /// 전송 방식 종류를 가져옵니다.
     /// </summary>
     public TransportKind Kind => TransportKind.Tcp;
 
     /// <summary>
-    /// \brief 현재 서버에 연결되어 있는 TCP 클라이언트 수를 가져옵니다.
+    /// 현재 서버에 연결되어 있는 TCP 클라이언트 수를 가져옵니다.
     /// </summary>
     public int ConnectedClientCount => _clients.Count;
 
     /// <summary>
-    /// \brief 서버 SendAsync 호출 시 사용할 기본 송신 대상 정책을 가져오거나 설정합니다.
+    /// 서버 SendAsync 호출 시 사용할 기본 송신 대상 정책을 가져오거나 설정합니다.
     /// </summary>
     public TcpServerSendTargetMode SendTargetMode
     {
@@ -86,17 +86,17 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
     }
 
     /// <summary>
-    /// \brief 메시지를 수신했을 때 발생합니다.
+    /// 메시지를 수신했을 때 발생합니다.
     /// </summary>
     public event EventHandler<MessageEnvelope>? MessageReceived;
 
     /// <summary>
-    /// \brief 서버에 연결된 클라이언트 수가 변경될 때 발생합니다.
+    /// 서버에 연결된 클라이언트 수가 변경될 때 발생합니다.
     /// </summary>
     public event EventHandler<int>? ConnectedClientCountChanged;
 
     /// <summary>
-    /// \brief TCP 서버 수신 대기를 시작합니다.
+    /// TCP 서버 수신 대기를 시작합니다.
     /// </summary>
     /// <param name="cancellationToken">취소 토큰입니다.</param>
     public Task ConnectAsync(CancellationToken cancellationToken = default)
@@ -108,7 +108,7 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        State = ConnectionState.Connecting;
+        SetState(ConnectionState.Connecting);
 
         try
         {
@@ -121,7 +121,7 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
 
             _serverCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-            State = ConnectionState.Listening;
+            SetState(ConnectionState.Listening);
 
             _acceptLoopTask = Task.Run(
                 () => AcceptLoopAsync(_serverCts.Token),
@@ -131,7 +131,7 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
         }
         catch
         {
-            State = ConnectionState.Faulted;
+            SetState(ConnectionState.Faulted);
             CleanupListener();
             CleanupClients();
 
@@ -143,7 +143,7 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
     }
 
     /// <summary>
-    /// \brief TCP 서버 수신 대기를 중지하고 연결된 클라이언트를 모두 해제합니다.
+    /// TCP 서버 수신 대기를 중지하고 연결된 클라이언트를 모두 해제합니다.
     /// </summary>
     /// <param name="cancellationToken">취소 토큰입니다.</param>
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
@@ -153,7 +153,7 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
             return;
         }
 
-        State = ConnectionState.Disconnecting;
+        SetState(ConnectionState.Disconnecting);
 
         _serverCts?.Cancel();
 
@@ -183,11 +183,11 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        State = ConnectionState.Disconnected;
+        SetState(ConnectionState.Disconnected);
     }
 
     /// <summary>
-    /// \brief TCP 서버 설정의 SendTargetMode 정책에 따라 연결된 클라이언트에게 메시지를 전송합니다.
+    /// TCP 서버 설정의 SendTargetMode 정책에 따라 연결된 클라이언트에게 메시지를 전송합니다.
     /// </summary>
     /// <param name="message">전송할 메시지입니다.</param>
     /// <param name="cancellationToken">취소 토큰입니다.</param>
@@ -199,7 +199,7 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
     }
 
     /// <summary>
-    /// \brief 지정한 서버 송신 대상 정책에 따라 연결된 클라이언트에게 메시지를 전송합니다.
+    /// 지정한 서버 송신 대상 정책에 따라 연결된 클라이언트에게 메시지를 전송합니다.
     /// </summary>
     /// <param name="targetMode">송신 대상 정책입니다.</param>
     /// <param name="message">전송할 메시지입니다.</param>
@@ -224,41 +224,15 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
             throw new InvalidOperationException("No TCP client is connected to the server.");
         }
 
-        await _sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var sendTasks = targets
+            .Select(target => SendToClientAsync(target, payload, cancellationToken))
+            .ToArray();
 
-        try
-        {
-            foreach (var target in targets)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                if (!target.Client.Connected)
-                {
-                    RemoveClient(target.ClientId, target.Client);
-                    continue;
-                }
-
-                try
-                {
-                    var stream = target.Client.GetStream();
-
-                    await _frameCodec.WriteFrameAsync(stream, payload, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch
-                {
-                    RemoveClient(target.ClientId, target.Client);
-                }
-            }
-        }
-        finally
-        {
-            _sendLock.Release();
-        }
+        await Task.WhenAll(sendTasks).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// \brief 연결된 모든 TCP 클라이언트에게 메시지를 전송합니다.
+    /// 연결된 모든 TCP 클라이언트에게 메시지를 전송합니다.
     /// </summary>
     /// <param name="message">전송할 메시지입니다.</param>
     /// <param name="cancellationToken">취소 토큰입니다.</param>
@@ -286,12 +260,49 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
     }
 
     /// <summary>
-    /// \brief TCP 서버 리소스를 비동기로 해제합니다.
+    /// TCP 서버 리소스를 비동기로 해제합니다.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
         await DisconnectAsync().ConfigureAwait(false);
-        _sendLock.Dispose();
+    }
+
+    private async Task SendToClientAsync(
+        TcpClientConnectionEntry target,
+        byte[] payload,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!target.Client.Connected)
+        {
+            RemoveClient(target.ClientId, target.Client);
+            return;
+        }
+
+        await target.SendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            if (!target.Client.Connected)
+            {
+                RemoveClient(target.ClientId, target.Client);
+                return;
+            }
+
+            var stream = target.Client.GetStream();
+
+            await _frameCodec.WriteFrameAsync(stream, payload, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            RemoveClient(target.ClientId, target.Client);
+        }
+        finally
+        {
+            target.SendLock.Release();
+        }
     }
 
     private async Task AcceptLoopAsync(CancellationToken cancellationToken)
@@ -336,7 +347,7 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
         {
             if (!cancellationToken.IsCancellationRequested)
             {
-                State = ConnectionState.Faulted;
+                SetState(ConnectionState.Faulted);
                 CleanupListener();
                 CleanupClients();
             }
@@ -345,7 +356,7 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
         {
             if (!cancellationToken.IsCancellationRequested)
             {
-                State = ConnectionState.Faulted;
+                SetState(ConnectionState.Faulted);
                 CleanupListener();
                 CleanupClients();
             }
@@ -354,7 +365,7 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
         {
             if (!cancellationToken.IsCancellationRequested)
             {
-                State = ConnectionState.Faulted;
+                SetState(ConnectionState.Faulted);
                 CleanupListener();
                 CleanupClients();
             }
@@ -447,6 +458,11 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
         }
     }
 
+    private void SetState(ConnectionState state)
+    {
+        Interlocked.Exchange(ref _state, (int)state);
+    }
+
     private void NotifyConnectedClientCountChanged()
     {
         ConnectedClientCountChanged?.Invoke(this, ConnectedClientCount);
@@ -515,6 +531,8 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
         public TcpClient Client { get; }
 
         public DateTimeOffset ConnectedAt { get; }
+
+        public SemaphoreSlim SendLock { get; } = new(1, 1);
     }
 
 }

@@ -10,7 +10,7 @@ using Dreamine.Communication.Sockets.Options;
 namespace Dreamine.Communication.Sockets.Clients;
 
 /// <summary>
-/// \brief TCP 클라이언트 기반 메시지 전송 계층입니다.
+/// TCP 클라이언트 기반 메시지 전송 계층입니다.
 /// </summary>
 public sealed class TcpClientTransport : IMessageTransport
 {
@@ -21,9 +21,10 @@ public sealed class TcpClientTransport : IMessageTransport
     private TcpClient? _client;
     private CancellationTokenSource? _receiveLoopCts;
     private Task? _receiveLoopTask;
+    private int _state = (int)ConnectionState.Disconnected;
 
     /// <summary>
-    /// \brief TcpClientTransport 클래스의 새 인스턴스를 초기화합니다.
+    /// TcpClientTransport 클래스의 새 인스턴스를 초기화합니다.
     /// </summary>
     /// <param name="options">TCP 클라이언트 설정입니다.</param>
     public TcpClientTransport(TcpClientTransportOptions options)
@@ -35,7 +36,7 @@ public sealed class TcpClientTransport : IMessageTransport
     }
 
     /// <summary>
-    /// \brief TcpClientTransport 클래스의 새 인스턴스를 초기화합니다.
+    /// TcpClientTransport 클래스의 새 인스턴스를 초기화합니다.
     /// </summary>
     /// <param name="options">TCP 클라이언트 설정입니다.</param>
     /// <param name="protocolAdapter">메시지 프로토콜 어댑터입니다.</param>
@@ -53,22 +54,22 @@ public sealed class TcpClientTransport : IMessageTransport
     }
 
     /// <summary>
-    /// \brief 현재 연결 상태를 가져옵니다.
+    /// 현재 연결 상태를 가져옵니다.
     /// </summary>
-    public ConnectionState State { get; private set; } = ConnectionState.Disconnected;
+    public ConnectionState State => (ConnectionState)Volatile.Read(ref _state);
 
     /// <summary>
-    /// \brief 전송 방식 종류를 가져옵니다.
+    /// 전송 방식 종류를 가져옵니다.
     /// </summary>
     public TransportKind Kind => TransportKind.Tcp;
 
     /// <summary>
-    /// \brief 메시지를 수신했을 때 발생합니다.
+    /// 메시지를 수신했을 때 발생합니다.
     /// </summary>
     public event EventHandler<MessageEnvelope>? MessageReceived;
 
     /// <summary>
-    /// \brief TCP 서버에 연결합니다.
+    /// TCP 서버에 연결합니다.
     /// </summary>
     /// <param name="cancellationToken">취소 토큰입니다.</param>
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
@@ -78,7 +79,7 @@ public sealed class TcpClientTransport : IMessageTransport
             return;
         }
 
-        State = ConnectionState.Connecting;
+        SetState(ConnectionState.Connecting);
 
         try
         {
@@ -98,7 +99,7 @@ public sealed class TcpClientTransport : IMessageTransport
             await _client.ConnectAsync(_options.Host, _options.Port, linkedCts.Token)
                 .ConfigureAwait(false);
 
-            State = ConnectionState.Connected;
+            SetState(ConnectionState.Connected);
 
             _receiveLoopCts = new CancellationTokenSource();
             _receiveLoopTask = Task.Run(
@@ -107,7 +108,7 @@ public sealed class TcpClientTransport : IMessageTransport
         }
         catch
         {
-            State = ConnectionState.Faulted;
+            SetState(ConnectionState.Faulted);
             CleanupClient();
 
             throw;
@@ -115,7 +116,7 @@ public sealed class TcpClientTransport : IMessageTransport
     }
 
     /// <summary>
-    /// \brief TCP 연결을 종료합니다.
+    /// TCP 연결을 종료합니다.
     /// </summary>
     /// <param name="cancellationToken">취소 토큰입니다.</param>
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
@@ -125,7 +126,7 @@ public sealed class TcpClientTransport : IMessageTransport
             return;
         }
 
-        State = ConnectionState.Disconnecting;
+        SetState(ConnectionState.Disconnecting);
 
         _receiveLoopCts?.Cancel();
 
@@ -157,11 +158,11 @@ public sealed class TcpClientTransport : IMessageTransport
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        State = ConnectionState.Disconnected;
+        SetState(ConnectionState.Disconnected);
     }
 
     /// <summary>
-    /// \brief 메시지를 TCP 서버로 전송합니다.
+    /// 메시지를 TCP 서버로 전송합니다.
     /// </summary>
     /// <param name="message">전송할 메시지입니다.</param>
     /// <param name="cancellationToken">취소 토큰입니다.</param>
@@ -186,7 +187,7 @@ public sealed class TcpClientTransport : IMessageTransport
         }
         catch
         {
-            State = ConnectionState.Faulted;
+            SetState(ConnectionState.Faulted);
             CleanupClient();
 
             throw;
@@ -194,7 +195,7 @@ public sealed class TcpClientTransport : IMessageTransport
     }
 
     /// <summary>
-    /// \brief TCP 클라이언트 리소스를 비동기로 해제합니다.
+    /// TCP 클라이언트 리소스를 비동기로 해제합니다.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
@@ -230,7 +231,7 @@ public sealed class TcpClientTransport : IMessageTransport
             if (!cancellationToken.IsCancellationRequested &&
                 State == ConnectionState.Connected)
             {
-                State = ConnectionState.Disconnected;
+                SetState(ConnectionState.Disconnected);
                 CleanupClient();
             }
         }
@@ -244,7 +245,7 @@ public sealed class TcpClientTransport : IMessageTransport
         {
             if (!cancellationToken.IsCancellationRequested)
             {
-                State = ConnectionState.Faulted;
+                SetState(ConnectionState.Faulted);
                 CleanupClient();
             }
         }
@@ -252,7 +253,7 @@ public sealed class TcpClientTransport : IMessageTransport
         {
             if (!cancellationToken.IsCancellationRequested)
             {
-                State = ConnectionState.Faulted;
+                SetState(ConnectionState.Faulted);
                 CleanupClient();
             }
         }
@@ -260,7 +261,7 @@ public sealed class TcpClientTransport : IMessageTransport
         {
             if (!cancellationToken.IsCancellationRequested)
             {
-                State = ConnectionState.Faulted;
+                SetState(ConnectionState.Faulted);
                 CleanupClient();
             }
         }
@@ -285,6 +286,11 @@ public sealed class TcpClientTransport : IMessageTransport
         }
 
         _client = null;
+    }
+
+    private void SetState(ConnectionState state)
+    {
+        Interlocked.Exchange(ref _state, (int)state);
     }
 
     private static void ValidateOptions(TcpClientTransportOptions options)
