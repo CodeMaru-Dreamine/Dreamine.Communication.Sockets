@@ -344,7 +344,8 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
 
         SetState(ConnectionState.Disconnecting);
 
-        _serverCts?.Cancel();
+        if (_serverCts is not null)
+            await _serverCts.CancelAsync().ConfigureAwait(false);
 
         CleanupClients();
         CleanupListener();
@@ -594,7 +595,7 @@ public sealed class TcpServerTransport : IMessageTransport, IServerTransportMoni
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        await DisconnectAsync().ConfigureAwait(false);
+        await DisconnectAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>

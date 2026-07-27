@@ -300,7 +300,8 @@ public sealed class UdpTransport : IMessageTransport
 
         SetState(ConnectionState.Disconnecting);
 
-        _receiveLoopCts?.Cancel();
+        if (_receiveLoopCts is not null)
+            await _receiveLoopCts.CancelAsync().ConfigureAwait(false);
 
         _client?.Close();
         _client?.Dispose();
@@ -420,7 +421,7 @@ public sealed class UdpTransport : IMessageTransport
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        await DisconnectAsync().ConfigureAwait(false);
+        await DisconnectAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>

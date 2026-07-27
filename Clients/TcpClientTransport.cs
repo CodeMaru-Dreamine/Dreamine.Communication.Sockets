@@ -298,7 +298,8 @@ public sealed class TcpClientTransport : IMessageTransport
 
         SetState(ConnectionState.Disconnecting);
 
-        _receiveLoopCts?.Cancel();
+        if (_receiveLoopCts is not null)
+            await _receiveLoopCts.CancelAsync().ConfigureAwait(false);
 
         CleanupClient();
 
@@ -425,7 +426,7 @@ public sealed class TcpClientTransport : IMessageTransport
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        await DisconnectAsync().ConfigureAwait(false);
+        await DisconnectAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>
