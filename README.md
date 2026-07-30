@@ -1,5 +1,18 @@
 # Dreamine.Communication.Sockets
 
+[![CI](https://github.com/CodeMaru-Dreamine/Dreamine.Communication.Sockets/actions/workflows/ci.yml/badge.svg)](https://github.com/CodeMaru-Dreamine/Dreamine.Communication.Sockets/actions/workflows/ci.yml)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=CodeMaru-Dreamine_Dreamine.Communication.Sockets&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=CodeMaru-Dreamine_Dreamine.Communication.Sockets)
+[![Security](https://sonarcloud.io/api/project_badges/measure?project=CodeMaru-Dreamine_Dreamine.Communication.Sockets&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=CodeMaru-Dreamine_Dreamine.Communication.Sockets)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=CodeMaru-Dreamine_Dreamine.Communication.Sockets&metric=coverage)](https://sonarcloud.io/component_measures?id=CodeMaru-Dreamine_Dreamine.Communication.Sockets&metric=coverage)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![.NET](https://img.shields.io/badge/.NET-8-512BD4)](https://dotnet.microsoft.com/)
+[![NuGet](https://img.shields.io/nuget/v/Dreamine.Communication.Sockets?label=nuget)](https://www.nuget.org/packages/Dreamine.Communication.Sockets)
+[![Downloads](https://img.shields.io/nuget/dt/Dreamine.Communication.Sockets?label=downloads)](https://www.nuget.org/packages/Dreamine.Communication.Sockets)
+[![Docs](https://img.shields.io/badge/Docs-dreamine.kr-2196F3)](https://dreamine.kr/)
+[![Guide](https://img.shields.io/badge/Guide-dreamine.kr-29B6F6)](https://dreamine.kr/)
+[![Playground](https://img.shields.io/badge/Playground-dreamine.kr-7E57C2)](https://dreamine.kr/)
+[![Book](https://img.shields.io/badge/Book-Practical_MVVM_Architecture-black)](https://dreamine.kr/)
+
 `Dreamine.Communication.Sockets` is part of the Dreamine Communication package family.
 
 This package provides TCP and UDP socket transport implementations while keeping socket-specific connection logic isolated from the application layer and from other transport packages.
