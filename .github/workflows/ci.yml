@@ -84,6 +84,7 @@ jobs:
               Invoke-RestMethod -Method Post -Uri 'https://sonarcloud.io/api/project_branches/rename' -Headers $headers -ContentType 'application/x-www-form-urlencoded' -Body @{ project = $env:SONAR_PROJECT_KEY; name = $env:GITHUB_DEFAULT_BRANCH } | Out-Null
             }
             Invoke-RestMethod -Method Post -Uri 'https://sonarcloud.io/api/new_code_periods/set' -Headers $headers -ContentType 'application/x-www-form-urlencoded' -Body @{ project = $env:SONAR_PROJECT_KEY; type = 'NUMBER_OF_DAYS'; value = '30' } | Out-Null
+            Invoke-RestMethod -Method Post -Uri 'https://sonarcloud.io/api/settings/set' -Headers $headers -ContentType 'application/x-www-form-urlencoded' -Body @{ component = $env:SONAR_PROJECT_KEY; key = 'sonar.qualitygate.ignoreSmallChanges'; value = 'false' } | Out-Null
           }
           catch {
             Write-Warning "SonarCloud project setting alignment skipped: $($_.Exception.Message)"
