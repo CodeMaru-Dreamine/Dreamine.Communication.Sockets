@@ -1,5 +1,18 @@
 # Dreamine.Communication.Sockets
 
+[![CI](https://github.com/CodeMaru-Dreamine/Dreamine.Communication.Sockets/actions/workflows/ci.yml/badge.svg)](https://github.com/CodeMaru-Dreamine/Dreamine.Communication.Sockets/actions/workflows/ci.yml)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=CodeMaru-Dreamine_Dreamine.Communication.Sockets&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=CodeMaru-Dreamine_Dreamine.Communication.Sockets)
+[![Security](https://sonarcloud.io/api/project_badges/measure?project=CodeMaru-Dreamine_Dreamine.Communication.Sockets&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=CodeMaru-Dreamine_Dreamine.Communication.Sockets)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=CodeMaru-Dreamine_Dreamine.Communication.Sockets&metric=coverage)](https://sonarcloud.io/component_measures?id=CodeMaru-Dreamine_Dreamine.Communication.Sockets&metric=coverage)
+[![라이선스](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![.NET](https://img.shields.io/badge/.NET-8-512BD4)](https://dotnet.microsoft.com/)
+[![NuGet](https://img.shields.io/nuget/v/Dreamine.Communication.Sockets?label=nuget)](https://www.nuget.org/packages/Dreamine.Communication.Sockets)
+[![다운로드](https://img.shields.io/nuget/dt/Dreamine.Communication.Sockets?label=downloads)](https://www.nuget.org/packages/Dreamine.Communication.Sockets)
+[![문서](https://img.shields.io/badge/문서-dreamine.kr-2196F3)](https://dreamine.kr/)
+[![가이드](https://img.shields.io/badge/가이드-dreamine.kr-29B6F6)](https://dreamine.kr/)
+[![플레이그라운드](https://img.shields.io/badge/플레이그라운드-dreamine.kr-7E57C2)](https://dreamine.kr/)
+[![도서](https://img.shields.io/badge/도서-실전_MVVM_아키텍처-black)](https://dreamine.kr/)
+
 `Dreamine.Communication.Sockets`는 Dreamine Communication 계열 패키지의 일부입니다.
 
 이 패키지는 TCP 및 UDP 소켓 기반 전송 구현체를 제공하며, 소켓 연결 관련 책임을 애플리케이션 계층 및 다른 전송 패키지와 분리합니다.

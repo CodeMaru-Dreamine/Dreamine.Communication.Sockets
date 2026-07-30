@@ -32,4 +32,9 @@
 	  <ProjectReference Include="..\Communication.Core\Dreamine.Communication.Core.csproj" />
 	</ItemGroup>
 
+	<ItemGroup>
+	  <Compile Remove="tests\**\*.cs" />
+	  <None Remove="tests\**\*" />
+	</ItemGroup>
+
 </Project>
