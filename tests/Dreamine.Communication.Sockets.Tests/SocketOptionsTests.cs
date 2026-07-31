@@ -1,5 +1,6 @@
 using System.Net;
 using Dreamine.Communication.Sockets.Enums;
+using Dreamine.Communication.Sockets.Exceptions;
 using Dreamine.Communication.Sockets.Options;
 using Xunit;
 
@@ -87,5 +88,15 @@ public sealed class SocketOptionsTests
         Assert.Equal(2500, client.ConnectTimeoutMs);
         Assert.True(udp.EnableBroadcast);
         Assert.True(udp.ReuseAddress);
+    }
+
+    [Fact]
+    public void SocketExceptionSupportsAllConstructors()
+    {
+        var inner = new IOException("socket");
+
+        Assert.NotEmpty(new SocketCommunicationException().Message);
+        Assert.Equal("failed", new SocketCommunicationException("failed").Message);
+        Assert.Same(inner, new SocketCommunicationException("failed", inner).InnerException);
     }
 }
